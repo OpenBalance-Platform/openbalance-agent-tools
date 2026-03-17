@@ -1,27 +1,22 @@
 """
-OpenBalance MCP Server
+OpenBalance MCP Server — Cashu-native.
 
-An MCP (Model Context Protocol) server that exposes OpenBalance
-capabilities as tools any MCP-compatible agent can use.
+Exposes OpenBalance as MCP tools any agent framework can use.
 
-Run standalone:
-    python -m openbalance_tools.mcp_server
+Run:  python -m openbalance_tools
 
-Or add to your MCP config (claude_desktop_config.json, etc.):
+MCP config:
     {
       "mcpServers": {
         "openbalance": {
           "command": "python",
-          "args": ["-m", "openbalance_tools.mcp_server"],
-          "env": {
-            "OPENBALANCE_API": "https://api.openbalance.ai/v1"
-          }
+          "args": ["-m", "openbalance_tools"]
         }
       }
     }
 
-This gives any Claude, LangChain, CrewAI, or other MCP-compatible
-agent native payment capabilities with zero custom integration.
+Agent gets: register, mint, pay_and_fetch, balance, transfer.
+That's it. Token = payment = auth.
 """
 
 from __future__ import annotations
@@ -36,33 +31,23 @@ from .client import OpenBalanceClient
 
 
 # ---------------------------------------------------------------------------
-# Tool definitions (MCP schema)
+# Tool definitions
 # ---------------------------------------------------------------------------
 
 TOOLS = [
     {
         "name": "openbalance_register",
         "description": (
-            "Register this agent with OpenBalance to get payment capabilities. "
-            "Call this once before using any other OpenBalance tools. "
-            "Returns an agent_id and wallet information."
+            "Register with OpenBalance to get ecash payment capabilities. "
+            "Returns an agent_id and initial ecash tokens. Call once on first use."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "A name for this agent (e.g. 'research-agent-v2')",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "What this agent does",
-                    "default": "",
-                },
+                "name": {"type": "string", "description": "Agent name"},
                 "tier": {
                     "type": "string",
                     "enum": ["free", "pro", "enterprise"],
-                    "description": "Subscription tier. Free: Lightning only, 10 txns/day. Pro: all rails, 1000 txns/day.",
                     "default": "free",
                 },
             },
@@ -70,114 +55,48 @@ TOOLS = [
         },
     },
     {
-        "name": "openbalance_acquire",
+        "name": "openbalance_mint",
         "description": (
-            "Pay for and acquire access to a paid API or service. "
-            "OpenBalance automatically discovers the service's payment requirements, "
-            "selects the cheapest payment rail (Lightning, USDC, or Stripe), "
-            "funds your wallet if needed, and returns an authentication token. "
-            "Use this when you hit a 402 Payment Required response, or proactively "
-            "before calling a service you know is paid."
+            "Mint more ecash by depositing via Lightning, USDC, or Stripe. "
+            "Returns a payment quote. Call openbalance_claim after paying."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "service_url": {
-                    "type": "string",
-                    "description": "The URL of the paid service to access",
-                },
-                "preferred_rail": {
+                "amount_sats": {"type": "integer", "description": "Amount in sats to mint"},
+                "on_ramp": {
                     "type": "string",
                     "enum": ["lightning", "usdc", "stripe"],
-                    "description": "Optional: prefer a specific payment rail",
-                },
-                "auto_fund": {
-                    "type": "boolean",
-                    "description": "Automatically fund the wallet if balance is low (default: true)",
-                    "default": True,
+                    "default": "lightning",
                 },
             },
-            "required": ["service_url"],
+            "required": ["amount_sats"],
         },
     },
     {
-        "name": "openbalance_fund",
+        "name": "openbalance_claim",
+        "description": "Claim ecash after paying a mint quote.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "quote_id": {"type": "string", "description": "The quote ID from openbalance_mint"},
+            },
+            "required": ["quote_id"],
+        },
+    },
+    {
+        "name": "openbalance_pay_and_fetch",
         "description": (
-            "Add funds to your OpenBalance wallet on a specific payment rail. "
-            "Use this to pre-fund your wallet before making payments, or to "
-            "top up when running low."
+            "Fetch a URL with automatic ecash payment. If the service "
+            "returns 402, OpenBalance pays with ecash from your wallet "
+            "and retries. Returns the response. This is the simplest way "
+            "to access paid APIs — use this instead of regular HTTP requests "
+            "for any service that might charge."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "rail": {
-                    "type": "string",
-                    "enum": ["lightning", "usdc", "stripe"],
-                    "description": "Which payment rail to fund",
-                },
-                "amount_usd": {
-                    "type": "number",
-                    "description": "Amount in USD to add",
-                },
-            },
-            "required": ["rail", "amount_usd"],
-        },
-    },
-    {
-        "name": "openbalance_status",
-        "description": (
-            "Check your OpenBalance wallet balances, active entitlements, "
-            "and recent transactions. Use this to understand your current "
-            "spending state before making decisions."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-        },
-    },
-    {
-        "name": "openbalance_delegate",
-        "description": (
-            "Delegate access to a paid service to another agent with "
-            "restricted scopes. The child agent receives a narrower "
-            "entitlement without paying again."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "child_agent_id": {
-                    "type": "string",
-                    "description": "The agent_id of the agent to delegate to",
-                },
-                "service_url": {
-                    "type": "string",
-                    "description": "The service URL to delegate access for",
-                },
-                "scopes": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Restricted scopes for the child (e.g. ['read'])",
-                },
-            },
-            "required": ["child_agent_id", "service_url"],
-        },
-    },
-    {
-        "name": "openbalance_fetch",
-        "description": (
-            "Fetch a URL with automatic payment handling. If the service "
-            "returns 402 Payment Required, OpenBalance pays for access "
-            "and retries. Returns the response body. This is the simplest "
-            "way to access paid APIs — just use this instead of a regular "
-            "HTTP request."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "The URL to fetch",
-                },
+                "url": {"type": "string", "description": "URL to fetch"},
                 "method": {
                     "type": "string",
                     "enum": ["GET", "POST", "PUT", "DELETE"],
@@ -185,6 +104,23 @@ TOOLS = [
                 },
             },
             "required": ["url"],
+        },
+    },
+    {
+        "name": "openbalance_balance",
+        "description": "Check your ecash wallet balance in sats.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "openbalance_transfer",
+        "description": "Transfer ecash to another agent.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "to_agent_id": {"type": "string"},
+                "amount_sats": {"type": "integer"},
+            },
+            "required": ["to_agent_id", "amount_sats"],
         },
     },
 ]
@@ -206,133 +142,92 @@ def _get_client() -> OpenBalanceClient:
 
 
 async def handle_tool(name: str, arguments: dict[str, Any]) -> dict:
-    """Execute an OpenBalance tool and return the result."""
     client = _get_client()
 
     if name == "openbalance_register":
-        result = await client.register(
+        return await client.register(
             name=arguments["name"],
-            description=arguments.get("description", ""),
             tier=arguments.get("tier", "free"),
         )
-        return result
 
-    elif name == "openbalance_acquire":
-        result = await client.acquire(
-            service_url=arguments["service_url"],
-            preferred_rail=arguments.get("preferred_rail"),
-            auto_fund=arguments.get("auto_fund", True),
+    elif name == "openbalance_mint":
+        return await client.mint(
+            amount_sats=arguments["amount_sats"],
+            on_ramp=arguments.get("on_ramp", "lightning"),
         )
-        return result
 
-    elif name == "openbalance_fund":
-        result = await client.fund(
-            rail=arguments["rail"],
-            amount_usd=arguments["amount_usd"],
-        )
-        return result
+    elif name == "openbalance_claim":
+        return await client.claim(quote_id=arguments["quote_id"])
 
-    elif name == "openbalance_status":
-        result = await client.status()
-        return result
-
-    elif name == "openbalance_delegate":
-        result = await client.delegate(
-            child_agent_id=arguments["child_agent_id"],
-            service_url=arguments["service_url"],
-            scopes=arguments.get("scopes"),
-        )
-        return result
-
-    elif name == "openbalance_fetch":
-        from .middleware import openbalance_fetch
-        resp = await openbalance_fetch(
+    elif name == "openbalance_pay_and_fetch":
+        resp = await client.pay_and_fetch(
             url=arguments["url"],
             method=arguments.get("method", "GET"),
-            agent_name=client.agent_name or "mcp-agent",
         )
         return {
             "status_code": resp.status_code,
-            "headers": dict(resp.headers),
-            "body": resp.text[:10000],  # cap response size
+            "body": resp.text[:10000],
+            "ecash_remaining": client.balance,
         }
 
-    else:
-        return {"error": f"Unknown tool: {name}"}
+    elif name == "openbalance_balance":
+        return {
+            "balance_sats": client.balance,
+            "num_tokens": client.num_tokens,
+            "agent_id": client.agent_id,
+        }
+
+    elif name == "openbalance_transfer":
+        return await client.transfer(
+            to_agent_id=arguments["to_agent_id"],
+            amount_sats=arguments["amount_sats"],
+        )
+
+    return {"error": f"Unknown tool: {name}"}
 
 
 # ---------------------------------------------------------------------------
-# MCP stdio server (JSON-RPC over stdin/stdout)
+# MCP stdio server
 # ---------------------------------------------------------------------------
 
 async def handle_message(msg: dict) -> dict | None:
-    """Handle a single JSON-RPC message."""
     method = msg.get("method", "")
     msg_id = msg.get("id")
 
     if method == "initialize":
         return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
+            "jsonrpc": "2.0", "id": msg_id,
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {
-                    "name": "openbalance",
-                    "version": "0.1.0",
-                },
+                "serverInfo": {"name": "openbalance", "version": "0.2.0"},
             },
         }
 
     elif method == "notifications/initialized":
-        return None  # no response for notifications
+        return None
 
     elif method == "tools/list":
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "result": {"tools": TOOLS},
-        }
+        return {"jsonrpc": "2.0", "id": msg_id, "result": {"tools": TOOLS}}
 
     elif method == "tools/call":
         params = msg.get("params", {})
-        tool_name = params.get("name", "")
-        arguments = params.get("arguments", {})
-
         try:
-            result = await handle_tool(tool_name, arguments)
+            result = await handle_tool(params.get("name", ""), params.get("arguments", {}))
             return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": json.dumps(result, indent=2, default=str),
-                        }
-                    ],
-                },
+                "jsonrpc": "2.0", "id": msg_id,
+                "result": {"content": [{"type": "text", "text": json.dumps(result, indent=2, default=str)}]},
             }
         except Exception as e:
             return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {
-                    "content": [{"type": "text", "text": f"Error: {e}"}],
-                    "isError": True,
-                },
+                "jsonrpc": "2.0", "id": msg_id,
+                "result": {"content": [{"type": "text", "text": f"Error: {e}"}], "isError": True},
             }
 
-    else:
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "error": {"code": -32601, "message": f"Unknown method: {method}"},
-        }
+    return {"jsonrpc": "2.0", "id": msg_id, "error": {"code": -32601, "message": f"Unknown method: {method}"}}
 
 
 async def serve():
-    """Run the MCP server over stdio."""
     reader = asyncio.StreamReader()
     protocol = asyncio.StreamReaderProtocol(reader)
     await asyncio.get_event_loop().connect_read_pipe(lambda: protocol, sys.stdin)
@@ -341,21 +236,17 @@ async def serve():
         line = await reader.readline()
         if not line:
             break
-
         try:
             msg = json.loads(line.decode())
         except json.JSONDecodeError:
             continue
-
         response = await handle_message(msg)
-        if response is not None:
-            out = json.dumps(response) + "\n"
-            sys.stdout.write(out)
+        if response:
+            sys.stdout.write(json.dumps(response) + "\n")
             sys.stdout.flush()
 
 
 def main():
-    """Entry point for `python -m openbalance_tools.mcp_server`."""
     asyncio.run(serve())
 
 

@@ -1,15 +1,15 @@
 """
-OpenBalance Fetch Middleware
+OpenBalance Fetch Middleware — Cashu-native.
 
-Drop-in replacement for httpx requests that automatically handles
-402 Payment Required responses by routing through OpenBalance.
+Drop-in replacement for HTTP requests that automatically handles
+402 responses by paying with ecash from OpenBalance.
 
 Usage:
     from openbalance_tools import openbalance_fetch
 
-    # One-liner: hits the URL, pays if needed, returns the response
+    # One line. Handles registration, ecash, payment, retry.
     response = await openbalance_fetch(
-        "https://api.premium-data.example/v1/prices",
+        "https://api.premium-data.example/paid/prices",
         agent_name="my-agent",
     )
 """
@@ -23,7 +23,6 @@ import httpx
 from .client import OpenBalanceClient
 
 
-# Module-level client cache (one per agent name)
 _clients: dict[str, OpenBalanceClient] = {}
 
 
@@ -32,52 +31,26 @@ async def openbalance_fetch(
     method: str = "GET",
     agent_name: str = "auto-agent",
     api_base: str = "https://api.openbalance.ai/v1",
-    auto_fund: bool = True,
-    preferred_rail: Optional[str] = None,
     **httpx_kwargs,
 ) -> httpx.Response:
     """
-    Fetch a URL with automatic 402 handling via OpenBalance.
+    Fetch a URL with automatic X-Cashu payment.
 
-    1. Makes the request normally
-    2. If 402 → registers with OpenBalance (if needed), acquires entitlement
-    3. Retries with the auth token attached
-    4. Returns the final response
+    1. Registers with OpenBalance if this is the first call
+    2. Makes the request
+    3. If 402 → pays with ecash from the agent's wallet
+    4. Returns the response
 
-    This is the zero-config entry point. An agent can call this
-    without any setup and it handles everything.
+    Zero config. Just call it.
     """
-
-    async with httpx.AsyncClient(timeout=30) as http:
-        # First attempt
-        headers = httpx_kwargs.pop("headers", {})
-        resp = await http.request(method, url, headers=headers, **httpx_kwargs)
-
-        if resp.status_code != 402:
-            return resp
-
-        # Got a 402 — need to pay via OpenBalance
-        client = await _get_or_create_client(agent_name, api_base)
-
-        # Acquire entitlement
-        entitlement = await client.acquire(
-            service_url=url,
-            preferred_rail=preferred_rail,
-            auto_fund=auto_fund,
-        )
-
-        # Retry with auth headers
-        headers.update(client.auth_headers(entitlement))
-        resp = await http.request(method, url, headers=headers, **httpx_kwargs)
-
-        return resp
+    client = await _get_or_create_client(agent_name, api_base)
+    return await client.pay_and_fetch(url, method=method, **httpx_kwargs)
 
 
 async def _get_or_create_client(
     agent_name: str,
     api_base: str,
 ) -> OpenBalanceClient:
-    """Get or create a cached OpenBalance client for this agent."""
     if agent_name not in _clients:
         client = OpenBalanceClient(api_base=api_base, agent_name=agent_name)
         await client.register(name=agent_name)

@@ -1,9 +1,9 @@
 """
-OpenBalance Agent Tools — open-source toolkit for AI agents.
+OpenBalance Agent Tools — Cashu-native toolkit for AI agents.
 
 pip install openbalance-tools
 """
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .client import OpenBalanceClient
 from .middleware import openbalance_fetch
