@@ -1,20 +1,23 @@
 """
-OpenBalance Client — Cashu-native.
+OpenBalance Client — Participant SDK for the clearing house.
 
-The agent holds ecash tokens directly. The client manages:
-  - Self-registration (get initial ecash)
-  - Minting more ecash (on-ramp via Lightning/USDC/Stripe)
-  - Spending ecash at X-Cashu-gated services
+The agent holds ecash tokens directly as bearer instruments.
+OpenBalance is the DTCC — it clears and settles, not processes payments.
+
+The client manages:
+  - Participant registration (membership + initial ecash)
+  - Deposits (funding connector → depository → ecash issued)
+  - Spending (X-Cashu header → clearing + settlement)
   - Token management (splitting, merging)
 
 Usage:
     from openbalance_tools import OpenBalanceClient
 
     client = OpenBalanceClient()
-    await client.register("my-agent")       # get initial ecash
-    await client.mint(10000, "lightning")    # mint 10k sats via Lightning
+    await client.register("my-agent")       # become a participant
+    await client.mint(10000, "lightning")    # deposit via Lightning
 
-    # Hit a paid API — ecash is sent automatically
+    # Hit a paid API — clearing + settlement handled automatically
     response = await client.pay_and_fetch("https://api.example.com/paid/data")
 """
 
@@ -32,7 +35,8 @@ OPENBALANCE_API = "https://api.openbalance.ai/v1"
 
 class OpenBalanceClient:
     """
-    Cashu-native client. Agent holds ecash tokens as bearer instruments.
+    Participant SDK for the OpenBalance clearing house.
+    Agent holds ecash tokens as bearer instruments.
     """
 
     def __init__(
@@ -61,7 +65,7 @@ class OpenBalanceClient:
         tier: str = "free",
     ) -> dict:
         """
-        Self-register with OpenBalance. Gets initial ecash.
+        Become a clearing house participant. Gets initial ecash.
         The ecash IS the wallet — no account needed.
         """
         resp = await self._http.post(
@@ -86,7 +90,7 @@ class OpenBalanceClient:
         return data
 
     # ------------------------------------------------------------------
-    # Minting (on-ramp → ecash)
+    # Deposit (funding connector → depository → ecash)
     # ------------------------------------------------------------------
 
     async def mint(
@@ -95,9 +99,9 @@ class OpenBalanceClient:
         on_ramp: str = "lightning",
     ) -> dict:
         """
-        Mint more ecash by paying via an on-ramp.
-        Returns payment details (invoice/address), then
-        call claim() after paying.
+        Deposit via a funding connector to get ecash from the depository.
+        Returns connector-specific payment details, then call claim()
+        after the connector confirms payment.
         """
         self._require_registered()
 
@@ -114,7 +118,7 @@ class OpenBalanceClient:
         return quote
 
     async def claim(self, quote_id: str) -> dict:
-        """Claim ecash after paying a mint quote."""
+        """Claim depository receipt (ecash) after deposit confirmed."""
         self._require_registered()
 
         resp = await self._http.post(
@@ -139,7 +143,7 @@ class OpenBalanceClient:
         return await self.claim(quote["quote_id"])
 
     # ------------------------------------------------------------------
-    # Spending (X-Cashu)
+    # Spending (X-Cashu → clearing + settlement)
     # ------------------------------------------------------------------
 
     def _select_proofs(self, amount_needed: int) -> tuple[str, list[dict]]:
@@ -201,12 +205,13 @@ class OpenBalanceClient:
         **httpx_kwargs,
     ) -> httpx.Response:
         """
-        The magic method. Fetch a URL, paying with ecash if needed.
+        The magic method. Fetch a URL, with automatic clearing + settlement.
 
         1. Try the request
         2. If 402 → extract required amount → select proofs → set X-Cashu header → retry
-        3. If change comes back in X-Cashu-Change → add to wallet
-        4. Return the response
+        3. Clearing house verifies proofs, settles the transaction
+        4. If change comes back in X-Cashu-Change → add to wallet
+        5. Return the response
         """
         headers = httpx_kwargs.pop("headers", {})
 

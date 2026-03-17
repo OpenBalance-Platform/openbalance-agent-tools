@@ -1,13 +1,13 @@
 """
-OpenBalance Fetch Middleware — Cashu-native.
+OpenBalance Fetch Middleware — automatic clearing & settlement.
 
 Drop-in replacement for HTTP requests that automatically handles
-402 responses by paying with ecash from OpenBalance.
+402 responses via the OpenBalance clearing house.
 
 Usage:
     from openbalance_tools import openbalance_fetch
 
-    # One line. Handles registration, ecash, payment, retry.
+    # One line. Handles registration, deposit, clearing, settlement.
     response = await openbalance_fetch(
         "https://api.premium-data.example/paid/prices",
         agent_name="my-agent",
@@ -34,11 +34,11 @@ async def openbalance_fetch(
     **httpx_kwargs,
 ) -> httpx.Response:
     """
-    Fetch a URL with automatic X-Cashu payment.
+    Fetch a URL with automatic clearing & settlement.
 
-    1. Registers with OpenBalance if this is the first call
+    1. Registers as a clearing house participant if first call
     2. Makes the request
-    3. If 402 → pays with ecash from the agent's wallet
+    3. If 402 → submits ecash proofs → clearing house settles
     4. Returns the response
 
     Zero config. Just call it.

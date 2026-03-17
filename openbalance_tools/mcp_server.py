@@ -1,7 +1,9 @@
 """
-OpenBalance MCP Server — Cashu-native.
+OpenBalance MCP Server — Clearing & Settlement for AI Agents.
 
-Exposes OpenBalance as MCP tools any agent framework can use.
+Exposes the OpenBalance clearing house as MCP tools any agent
+framework can use. OpenBalance is the DTCC for the agent economy —
+we don't process payments, we clear and settle them.
 
 Run:  python -m openbalance_tools
 
@@ -15,8 +17,8 @@ MCP config:
       }
     }
 
-Agent gets: register, mint, pay_and_fetch, balance, transfer.
-That's it. Token = payment = auth.
+Agent gets: register, deposit, pay_and_fetch, balance, transfer.
+Token = payment = auth. Clearing + settlement is automatic.
 """
 
 from __future__ import annotations
@@ -38,8 +40,9 @@ TOOLS = [
     {
         "name": "openbalance_register",
         "description": (
-            "Register with OpenBalance to get ecash payment capabilities. "
-            "Returns an agent_id and initial ecash tokens. Call once on first use."
+            "Become a participant in the OpenBalance clearing house. "
+            "Returns an agent_id and initial ecash tokens. Call once on first use. "
+            "OpenBalance is the DTCC for agents — clears and settles transactions."
         ),
         "inputSchema": {
             "type": "object",
@@ -57,13 +60,13 @@ TOOLS = [
     {
         "name": "openbalance_mint",
         "description": (
-            "Mint ecash by depositing via any supported funding method. "
+            "Deposit funds into the OpenBalance depository via any funding connector. "
+            "The clearing house doesn't process payments — connectors handle that. "
             "Crypto: lightning, onchain_btc, usdc_base, usdc_eth, usdc_sol, cashu_token. "
             "Card/wallet: card, apple_pay, google_pay, cash_app, paypal. "
             "Bank/enterprise: ach, sepa, wire, invoice. "
-            "Returns a payment quote with method-specific details (invoice, "
-            "deposit address, checkout URL, bank ref, etc). "
-            "Call openbalance_claim after paying."
+            "Returns connector-specific payment details. "
+            "Call openbalance_claim after the connector confirms payment."
         ),
         "inputSchema": {
             "type": "object",
@@ -90,7 +93,7 @@ TOOLS = [
     },
     {
         "name": "openbalance_claim",
-        "description": "Claim ecash after paying a mint quote.",
+        "description": "Claim depository receipt (ecash) after funding connector confirms payment.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -102,11 +105,11 @@ TOOLS = [
     {
         "name": "openbalance_pay_and_fetch",
         "description": (
-            "Fetch a URL with automatic ecash payment. If the service "
-            "returns 402, OpenBalance pays with ecash from your wallet "
-            "and retries. Returns the response. This is the simplest way "
-            "to access paid APIs — use this instead of regular HTTP requests "
-            "for any service that might charge."
+            "Fetch a URL with automatic clearing and settlement. If the "
+            "service returns 402, the clearing house verifies your ecash "
+            "proofs and settles the transaction. Returns the response. "
+            "This is the simplest way to access paid APIs — use this "
+            "instead of regular HTTP requests for any service that might charge."
         ),
         "inputSchema": {
             "type": "object",
@@ -128,7 +131,7 @@ TOOLS = [
     },
     {
         "name": "openbalance_transfer",
-        "description": "Transfer ecash to another agent.",
+        "description": "Book-entry transfer of ecash to another participant.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -215,7 +218,7 @@ async def handle_message(msg: dict) -> dict | None:
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "openbalance", "version": "0.2.0"},
+                "serverInfo": {"name": "openbalance", "version": "0.3.0"},
             },
         }
 
