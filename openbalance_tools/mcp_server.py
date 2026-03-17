@@ -57,8 +57,13 @@ TOOLS = [
     {
         "name": "openbalance_mint",
         "description": (
-            "Mint more ecash by depositing via Lightning, USDC, or Stripe. "
-            "Returns a payment quote. Call openbalance_claim after paying."
+            "Mint ecash by depositing via any supported funding method. "
+            "Crypto: lightning, onchain_btc, usdc_base, usdc_eth, usdc_sol, cashu_token. "
+            "Card/wallet: card, apple_pay, google_pay, cash_app, paypal. "
+            "Bank/enterprise: ach, sepa, wire, invoice. "
+            "Returns a payment quote with method-specific details (invoice, "
+            "deposit address, checkout URL, bank ref, etc). "
+            "Call openbalance_claim after paying."
         ),
         "inputSchema": {
             "type": "object",
@@ -66,8 +71,18 @@ TOOLS = [
                 "amount_sats": {"type": "integer", "description": "Amount in sats to mint"},
                 "on_ramp": {
                     "type": "string",
-                    "enum": ["lightning", "usdc", "stripe"],
+                    "enum": [
+                        "lightning", "onchain_btc",
+                        "usdc_base", "usdc_eth", "usdc_sol", "cashu_token",
+                        "card", "apple_pay", "google_pay", "cash_app", "paypal",
+                        "ach", "sepa", "wire", "invoice"
+                    ],
                     "default": "lightning",
+                    "description": (
+                        "Funding method. Crypto-native: lightning, onchain_btc, "
+                        "usdc_base/eth/sol, cashu_token. Fiat: card, apple_pay, "
+                        "google_pay, cash_app, paypal. Bank: ach, sepa, wire, invoice."
+                    ),
                 },
             },
             "required": ["amount_sats"],
