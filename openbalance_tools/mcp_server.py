@@ -1,9 +1,9 @@
 """
-OpenBalance MCP Server — Clearing & Settlement for AI Agents.
+OpenBalance MCP Server — Clearing & Fulfilment for AI Agents.
 
-Exposes the OpenBalance clearing house as MCP tools any agent
+Exposes the OpenBalance clearing & fulfilment facility as MCP tools any agent
 framework can use. OpenBalance is the DTCC for the agent economy —
-we don't process payments, we clear and settle them.
+we don't process payments, we clear and fulfil them.
 
 Run:  python -m openbalance_tools
 
@@ -18,7 +18,7 @@ MCP config:
     }
 
 Agent gets: register, deposit, pay_and_fetch, balance, transfer.
-Token = payment = auth. Clearing + settlement is automatic.
+Token = payment = auth. Clearing + fulfilment is automatic.
 """
 
 from __future__ import annotations
@@ -40,9 +40,9 @@ TOOLS = [
     {
         "name": "openbalance_register",
         "description": (
-            "Become a participant in the OpenBalance clearing house. "
+            "Become a participant in the OpenBalance clearing and fulfilment facility. "
             "Returns an agent_id and initial ecash tokens. Call once on first use. "
-            "OpenBalance is the DTCC for agents — clears and settles transactions."
+            "OpenBalance is the DTCC for agents — provides clearing and fulfilment."
         ),
         "inputSchema": {
             "type": "object",
@@ -105,9 +105,9 @@ TOOLS = [
     {
         "name": "openbalance_pay_and_fetch",
         "description": (
-            "Fetch a URL with automatic clearing and settlement. If the "
+            "Fetch a URL with automatic clearing and fulfilment. If the "
             "service returns 402, the clearing house verifies your ecash "
-            "proofs and settles the transaction. Returns the response. "
+            "proofs and clears the transaction, gating service fulfilment. Returns the response. "
             "This is the simplest way to access paid APIs — use this "
             "instead of regular HTTP requests for any service that might charge."
         ),

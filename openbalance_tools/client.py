@@ -1,13 +1,13 @@
 """
-OpenBalance Client — Participant SDK for the clearing house.
+OpenBalance Client — Participant SDK for the clearing & fulfilment facility.
 
 The agent holds ecash tokens directly as bearer instruments.
-OpenBalance is the DTCC — it clears and settles, not processes payments.
+OpenBalance is the DTCC — it clears and fulfils, not processes payments.
 
 The client manages:
   - Participant registration (membership + initial ecash)
   - Deposits (funding connector → depository → ecash issued)
-  - Spending (X-Cashu header → clearing + settlement)
+  - Spending (X-Cashu header → clearing + fulfilment)
   - Token management (splitting, merging)
 
 Usage:
@@ -17,7 +17,7 @@ Usage:
     await client.register("my-agent")       # become a participant
     await client.mint(10000, "lightning")    # deposit via Lightning
 
-    # Hit a paid API — clearing + settlement handled automatically
+    # Hit a paid API — clearing + fulfilment handled automatically
     response = await client.pay_and_fetch("https://api.example.com/paid/data")
 """
 
@@ -143,7 +143,7 @@ class OpenBalanceClient:
         return await self.claim(quote["quote_id"])
 
     # ------------------------------------------------------------------
-    # Spending (X-Cashu → clearing + settlement)
+    # Spending (X-Cashu → clearing + fulfilment)
     # ------------------------------------------------------------------
 
     def _select_proofs(self, amount_needed: int) -> tuple[str, list[dict]]:
@@ -205,11 +205,11 @@ class OpenBalanceClient:
         **httpx_kwargs,
     ) -> httpx.Response:
         """
-        The magic method. Fetch a URL, with automatic clearing + settlement.
+        The magic method. Fetch a URL, with automatic clearing + fulfilment.
 
         1. Try the request
         2. If 402 → extract required amount → select proofs → set X-Cashu header → retry
-        3. Clearing house verifies proofs, settles the transaction
+        3. Clearing house verifies proofs and clears the transaction, gating service fulfilment
         4. If change comes back in X-Cashu-Change → add to wallet
         5. Return the response
         """

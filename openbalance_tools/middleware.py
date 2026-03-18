@@ -1,13 +1,13 @@
 """
-OpenBalance Fetch Middleware — automatic clearing & settlement.
+OpenBalance Fetch Middleware — automatic clearing & fulfilment.
 
 Drop-in replacement for HTTP requests that automatically handles
-402 responses via the OpenBalance clearing house.
+402 responses via the OpenBalance clearing & fulfilment facility.
 
 Usage:
     from openbalance_tools import openbalance_fetch
 
-    # One line. Handles registration, deposit, clearing, settlement.
+    # One line. Handles registration, deposit, clearing, fulfilment.
     response = await openbalance_fetch(
         "https://api.premium-data.example/paid/prices",
         agent_name="my-agent",
@@ -34,11 +34,11 @@ async def openbalance_fetch(
     **httpx_kwargs,
 ) -> httpx.Response:
     """
-    Fetch a URL with automatic clearing & settlement.
+    Fetch a URL with automatic clearing & fulfilment.
 
-    1. Registers as a clearing house participant if first call
+    1. Registers as a clearing & fulfilment facility participant if first call
     2. Makes the request
-    3. If 402 → submits ecash proofs → clearing house settles
+    3. If 402 → submits ecash proofs → clearing house clears and gates fulfilment
     4. Returns the response
 
     Zero config. Just call it.

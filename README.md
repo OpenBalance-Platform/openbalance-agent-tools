@@ -1,8 +1,8 @@
 # OpenBalance Agent Tools
 
-Participant SDK for the [OpenBalance](https://openbalance.ai) clearing house — the DTCC for the agent economy.
+Participant SDK for the [OpenBalance](https://openbalance.ai) clearing & fulfilment facility — the DTCC for the agent economy.
 
-Agents become participants, receive ecash from the depository, and spend it at any X-Cashu-gated service. **The clearing house verifies proofs, settles transactions, and issues change. We don't process payments — we clear and settle them.**
+Agents become participants, receive ecash from the depository, and spend it at any X-Cashu-gated service. **The clearing house verifies proofs, clears transactions, and gates fulfilment. We don't process payments — we clear and fulfil them.**
 
 ## Quickstart
 
@@ -45,7 +45,7 @@ client = OpenBalanceClient()
 await client.register("my-agent")               # become a participant
 await client.mint_and_claim(10000, "lightning")  # deposit 10k sats
 
-# Hit a paid API — clearing + settlement handled automatically
+# Hit a paid API — clearing + fulfilment handled automatically
 response = await client.pay_and_fetch("https://api.example.com/paid/data")
 print(response.json())
 print(f"Remaining: {client.balance} sats")
@@ -56,7 +56,7 @@ print(f"Remaining: {client.balance} sats")
 ```python
 from openbalance_tools import openbalance_fetch
 
-# One line. Registers, deposits, clears, settles. Done.
+# One line. Registers, deposits, clears, fulfils. Done.
 response = await openbalance_fetch("https://api.example.com/paid/data")
 ```
 
@@ -75,7 +75,7 @@ Agent calls pay_and_fetch("https://service.com/paid/api")
   ├─ GET https://service.com/paid/api
   │   Headers: X-Cashu: <base64-encoded ecash token>
   │   │
-  │   │  Clearing house: verify proofs → mark spent → settle
+  │   │  Clearing house: verify proofs → clear (mark spent) → gate fulfilment
   │   │
   │   └─ 200 OK
   │       Headers: X-Cashu-Change: <change token if overpaid>
@@ -84,7 +84,7 @@ Agent calls pay_and_fetch("https://service.com/paid/api")
   └─ Update wallet (remove spent proofs, add change)
 ```
 
-The `X-Cashu` header contains a Cashu ecash token — a bundle of cryptographic proofs that are simultaneously the payment and the authentication credential. The clearing house verifies the proofs are authentic and unspent (clearing), marks them consumed (settlement), and issues change if overpaid. The service gets paid without ever touching a payment processor.
+The `X-Cashu` header contains a Cashu ecash token — a bundle of cryptographic proofs that are simultaneously the payment and the authentication credential. The clearing house verifies the proofs are authentic and unspent (clearing), marks them consumed (clearing completion), and issues change if overpaid. The service gets paid without ever touching a payment processor.
 
 ## The DTCC model
 
@@ -94,7 +94,7 @@ OpenBalance is not a payment processor. It's the clearing and settlement layer:
 |---|---|
 | Depository | Cashu mint — issues ecash, custodies signing keys |
 | Clearing | Verify proofs are authentic and unspent |
-| Settlement | Mark proofs consumed, record transaction |
+| Settlement | Clearing completion — mark proofs consumed, record transaction |
 | Book-entry | Participant-to-participant token transfers |
 | Membership | Agent registry, tiers, entitlements |
 
@@ -114,6 +114,16 @@ Funding connectors (Lightning, USDC, Stripe, etc.) are pluggable deposit adapter
 | ACH / SEPA | Bank | 1-3 days |
 | Wire transfer | Bank | Same day |
 | Net-30 invoice | Enterprise | Pre-approved |
+
+## Out of scope
+
+OpenBalance handles **clearing and fulfilment** only. The following are external to OpenBalance:
+
+- **Money** (cashing out to preferred currency): Handled by external settlement infrastructure and funding connectors
+- **Identity** (agent credentials, reputation): Handled by external identity systems and agents
+- **Entitlements** (access control, service policies): Handled by individual services and their authorization layers
+
+OpenBalance proves the agent held valid ecash proofs and clears the transaction. The service decides what to do with that proof (fulfil the request, deny it, charge differently, etc.).
 
 ## Links
 
